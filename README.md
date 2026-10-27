@@ -233,6 +233,31 @@ The layout is responsive for desktop and mobile browsers. All assets are served 
 
 Requires a Home Assistant installation with **Supervisor and add-on support**, such as Home Assistant OS. A Home Assistant Container installation can instead run this application separately with Docker.
 
+### Install from the GitHub repository (recommended)
+
+[![Add this repository to Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Ftearandfix%2Flaptop_repair)
+
+Click the button above to open the repository dialog in your Home Assistant instance, then confirm adding the repository. Alternatively, add it manually:
+
+1. Open **Settings → Apps → Install app**. On older Home Assistant versions, this is **Settings → Add-ons → Add-on Store**.
+2. Open the **⋮** menu in the top-right corner and select **Repositories**.
+3. Paste this repository URL and select **Add**:
+
+   ```text
+   https://github.com/tearandfix/laptop_repair
+   ```
+
+   Use the repository URL above, not the URL of the `laptop_repair` subfolder.
+
+4. Close the dialog and find **Laptop Repair Manager** in the store. If it does not appear immediately, use **Check for updates** in the store menu and refresh the page.
+5. Open **Laptop Repair Manager** and select **Install**. Home Assistant builds the image on your device, so the first installation can take several minutes and requires internet access to download the base image and dependencies.
+6. Once installed, select **Start**. Enable **Start on boot** and **Show in sidebar** if desired.
+7. Select **Open Web UI**, or open **Laptop Repairs** from the sidebar.
+
+No configuration options, separate login, or port forwarding are required. The web interface uses Home Assistant Ingress. If startup fails, open the add-on's **Log** tab for details.
+
+The repository root must contain `repository.yaml` alongside the `laptop_repair/` add-on directory. Both are included in this project and must be pushed to GitHub for repository installation to work.
+
 ### Local add-on installation
 
 1. Copy the complete `laptop_repair` directory from this project into Home Assistant's local add-ons directory:
@@ -254,7 +279,16 @@ The add-on does not require access to Home Assistant's API or devices. Its datab
 
 ### Updates
 
-Back up the add-on, replace the local add-on source with the new version, reload the store, and rebuild/update it using Home Assistant. Do not remove its persistent data. See [Backups and recovery](#backups-and-recovery).
+For a **GitHub repository installation**:
+
+1. Back up the add-on using Home Assistant's backup interface.
+2. Open the app/add-on store and select **⋮ → Check for updates**.
+3. Open **Laptop Repair Manager** and select **Update** when a newer version is available.
+4. After the update, start the add-on if needed and open its web interface.
+
+For a **local installation**, replace the source in `/addons/laptop_repair/`, reload the store, and rebuild/update the add-on through Home Assistant.
+
+Updates preserve the add-on's `/data` directory. Do not uninstall it to update. See [Backups and recovery](#backups-and-recovery). Maintainers must increase `version` in `laptop_repair/config.yaml` when publishing an update for Home Assistant to offer it.
 
 Version 1.1.0 automatically adds the resale listing description field to existing databases on startup. Existing laptops start with an empty description.
 
@@ -353,6 +387,7 @@ Project layout:
 ```text
 .
 ├── README.md
+├── repository.yaml
 ├── requirements-dev.txt
 ├── pytest.ini
 ├── ruff.toml
@@ -430,7 +465,9 @@ Run the tests after updating dependencies. The Docker image uses Python 3.13. Ru
 
 ### The add-on does not appear in the store
 
-Confirm that `/addons/laptop_repair/config.yaml` exists and that the add-on directory was not copied with an extra nesting level. Reload/check for updates in the add-on store.
+For repository installations, confirm that `https://github.com/tearandfix/laptop_repair` appears under **Repositories**, and that `repository.yaml` has been pushed to the root of its default branch. Check for updates in the store and refresh the page. The add-on supports `amd64` and `aarch64` devices.
+
+For local installations, confirm that `/addons/laptop_repair/config.yaml` exists and that the add-on directory was not copied with an extra nesting level. Reload/check for updates in the add-on store.
 
 ### The application cannot write its database or upload files
 
