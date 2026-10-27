@@ -9,17 +9,18 @@
   <article class="metric"><span>Purchase</span><strong>{{ laptop.purchase_price|money }}</strong></article>
   <article class="metric"><span>Shipping</span><strong>{{ laptop.shipping_cost|money }}</strong></article>
   <article class="metric"><span>Repair parts</span><strong>{{ laptop.repair_cost|money }}</strong></article>
-  <article class="metric"><span>Total cost</span><strong>{{ laptop.total_cost|money }}</strong></article>
+  <article class="metric"><span>Total cost</span><strong>{{ laptop.total_cost|money }}</strong>{% if laptop.transfer_cost %}<small>Includes {{ laptop.transfer_cost|money }} in internal transfers</small>{% endif %}</article>
   <article class="metric"><span>Resale price</span><strong>{{ laptop.resale_price|money }}</strong></article>
-  <article class="metric accent"><span>Profit</span><strong>{{ profit(laptop.profit) }}</strong></article>
+  <article class="metric accent"><span>{{ 'Net result after recovery' if laptop.is_donor else 'Profit' }}</span><strong>{{ profit(laptop.profit) }}</strong></article>
 </section>
+{% if laptop.is_donor %}{% include 'recovery_details.html' %}{% endif %}
 {% if laptop.resale_description %}<section class="panel padded"><h2>Resale listing description</h2><p class="preserve-lines">{{ laptop.resale_description }}</p></section>{% endif %}
 {% if laptop.notes or laptop.ebay_url %}<section class="panel padded"><h2>Purchase & repair notes</h2>{% if laptop.notes %}<p class="preserve-lines">{{ laptop.notes }}</p>{% endif %}{% if laptop.ebay_url %}<a href="{{ laptop.ebay_url }}" target="_blank" rel="noopener noreferrer">Open eBay listing ↗</a>{% endif %}</section>{% endif %}
 <section class="panel">
   <div class="section-heading"><div><h2>Repair parts</h2><p class="muted small">Recorded unit prices are preserved when inventory prices change.</p></div><a href="{{ url('/parts') }}">Manage inventory →</a></div>
   {% if laptop.assignments %}<div class="table-scroll"><table><thead><tr><th>Part</th><th class="number">Recorded unit price</th><th>Quantity</th><th class="number">Cost</th><th>Action</th></tr></thead><tbody>
   {% for item in laptop.assignments %}<tr>
-    <td><a href="{{ url('/parts/' ~ item.part_id ~ '/edit') }}">{{ item.title }}</a>{% if item.archived %}<span class="badge">Archived</span>{% endif %}</td>
+    <td><a href="{{ url('/parts/' ~ item.part_id ~ '/edit') }}">{{ item.title }}</a>{% if item.archived %}<span class="badge">Archived</span>{% endif %}{% if item.donor_laptop_id %}<a class="small block" href="{{ url('/laptops/' ~ item.donor_laptop_id) }}">Recovered · donor #{{ item.donor_laptop_id }}</a>{% endif %}</td>
     <td class="number">{{ item.unit_price|money }}</td>
     <td><form class="inline-form" action="{{ url('/laptops/' ~ laptop.id ~ '/parts/' ~ item.id ~ '/edit') }}" method="post">{{ csrf(csrf_token) }}<input aria-label="Quantity for {{ item.title }}" class="quantity" type="number" name="quantity" value="{{ item.quantity }}" min="1" max="1000000" required><button type="submit">Update</button></form></td>
     <td class="number">{{ (item.unit_price * item.quantity)|money }}</td>
@@ -28,8 +29,9 @@
   </tbody></table></div>{% else %}<p class="empty small">No repair parts assigned yet.</p>{% endif %}
   <div class="panel-bottom">
     {% if parts %}<form class="filters no-margin" method="post" action="{{ url('/laptops/' ~ laptop.id ~ '/parts') }}">{{ csrf(csrf_token) }}
-      <label class="grow">Part from inventory<select name="part_id" required><option value="">Choose a part…</option>{% for part in parts %}<option value="{{ part.id }}" {% if part.stock == 0 %}disabled{% endif %}>{{ part.title }} · {{ part.unit_price|money }} · {{ part.stock }} available</option>{% endfor %}</select></label>
-      <label>Quantity<input class="quantity" type="number" name="quantity" value="1" min="1" max="1000000" required></label><button class="primary" type="submit">Assign part</button>
+      <label class="grow">Part from inventory<select name="part_id" required><option value="">Choose a part…</option>{% for part in parts %}<option value="{{ part.id }}" {% if part.stock == 0 %}disabled{% endif %}>{{ part.title }} · {{ part.unit_price|money }} · {{ part.stock }} available{% if part.donor_laptop_id %} · donor #{{ part.donor_laptop_id }} / batch #{{ part.id }}{% endif %}</option>{% endfor %}</select></label>
+      <label>Quantity<input class="quantity" type="number" name="quantity" value="1" min="1" max="1000000" required></label>
+      <label>Transfer value per unit (UAH)<input type="number" name="transfer_value" min="0" max="999999999.99" step="0.01" placeholder="Use estimated value"><small>Recovered parts only; leave blank for purchased parts.</small></label><button class="primary" type="submit">Assign part</button>
     </form>{% else %}<p class="muted">Add parts to your inventory before assigning them. <a href="{{ url('/parts/new') }}">Add a part →</a></p>{% endif %}
   </div>
 </section>
@@ -38,5 +40,5 @@
   {% if laptop.attachments %}<ul class="file-list">{% for file in laptop.attachments %}<li><div><a href="{{ url('/laptops/' ~ laptop.id ~ '/attachments/' ~ file.id) }}">{{ file.filename }}</a><span class="muted small block">{{ '%.1f'|format(file.size / 1024) }} KiB · Download</span></div><form method="post" action="{{ url('/laptops/' ~ laptop.id ~ '/attachments/' ~ file.id ~ '/delete') }}" data-confirm="Delete this attachment permanently?">{{ csrf(csrf_token) }}<button type="submit" class="danger subtle">Delete</button></form></li>{% endfor %}</ul>{% else %}<p class="empty small">No attachments yet.</p>{% endif %}
   <form class="panel-bottom filters no-margin" method="post" enctype="multipart/form-data" action="{{ url('/laptops/' ~ laptop.id ~ '/attachments') }}">{{ csrf(csrf_token) }}<label class="grow">Choose files<input type="file" name="files" multiple required></label><button type="submit">Upload files</button></form>
 </section>
-<section class="danger-zone"><div><h2>Delete laptop</h2><p class="muted small">Assigned parts will return to stock. Attached files will be permanently removed.</p></div><form method="post" action="{{ url('/laptops/' ~ laptop.id ~ '/delete') }}" data-confirm="Delete this laptop and all its files? Assigned parts will be returned to stock.">{{ csrf(csrf_token) }}<button class="danger" type="submit">Delete laptop</button></form></section>
+{% if laptop.has_recovery_history %}<section class="padded"><h2>Donor history retained</h2><p class="muted small">This laptop has recovered batches or recovery sales and cannot be deleted. Use the Parted out status to retain its costs, files, and recovery history.</p></section>{% else %}<section class="danger-zone"><div><h2>Delete laptop</h2><p class="muted small">Assigned parts will return to stock. Attached files will be permanently removed.</p></div><form method="post" action="{{ url('/laptops/' ~ laptop.id ~ '/delete') }}" data-confirm="Delete this laptop and all its files? Assigned parts will be returned to stock.">{{ csrf(csrf_token) }}<button class="danger" type="submit">Delete laptop</button></form></section>{% endif %}
 {% endblock %}

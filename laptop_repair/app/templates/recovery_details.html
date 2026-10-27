@@ -1,0 +1,24 @@
+{% from 'macros.html' import csrf, profit %}
+<section class="panel">
+  <div class="section-heading"><div><h2>Recovery & parting out</h2><p class="muted small">Estimated stock is not income. Internal transfer credits are not cash proceeds.</p></div><div class="actions">{% if laptop.status in donor_statuses %}<a class="button primary" href="{{ url('/laptops/' ~ laptop.id ~ '/recover') }}">+ Recover parts</a>{% endif %}<a class="button" href="{{ url('/laptops/' ~ laptop.id ~ '/scrap') }}">Record chassis / scrap sale</a></div></div>
+  <div class="recovery-metrics">
+    <article><span class="muted small">Original total cost</span><strong>{{ laptop.total_cost|money }}</strong></article>
+    <article><span class="muted small">Recovered stock estimate</span><strong>{{ laptop.recovered_stock_value|money }}</strong></article>
+    <article><span class="muted small">Internal transfer credits</span><strong>{{ laptop.transfer_credits|money }}</strong></article>
+    <article><span class="muted small">Part sales · actual proceeds</span><strong>{{ laptop.part_sales|money }}</strong></article>
+    <article><span class="muted small">Chassis / scrap · actual proceeds</span><strong>{{ laptop.scrap_sales|money }}</strong></article>
+    <article><span class="muted small">Net result after recovery</span><strong>{{ profit(laptop.profit) }}</strong></article>
+  </div>
+  <div class="section-heading"><h3>Recovered inventory batches</h3><a href="{{ url('/parts') }}">Parts inventory →</a></div>
+  {% if laptop.recovered_parts %}<div class="table-scroll"><table><thead><tr><th>Part / batch</th><th class="number">Available</th><th class="number">Assigned</th><th class="number">Sold</th><th class="number">Estimated unit value</th><th>Actions</th></tr></thead><tbody>
+    {% for part in laptop.recovered_parts %}<tr><td><a href="{{ url('/parts/' ~ part.id ~ '/edit') }}">{{ part.title }}</a><span class="muted small block">Batch #{{ part.id }}{% if part.archived %} · Archived{% endif %}</span></td><td class="number">{{ part.stock }}</td><td class="number">{{ part.assigned }}</td><td class="number">{{ part.sold }}</td><td class="number">{{ part.unit_price|money }}</td><td>{% if part.stock and not part.archived %}<a class="button small" href="{{ url('/parts/' ~ part.id ~ '/sell') }}">Sell</a>{% else %}<span class="muted small">{{ 'Archived' if part.archived else 'No available stock' }}</span>{% endif %}</td></tr>{% endfor %}
+  </tbody></table></div>{% else %}<p class="empty small">No recovered parts yet. Recovery alone does not reduce the recorded loss.</p>{% endif %}
+  <div class="section-heading"><h3>Parts reused in other laptops</h3></div>
+  {% if laptop.transfers %}<div class="table-scroll"><table><thead><tr><th>Part</th><th>Recipient laptop</th><th class="number">Quantity</th><th class="number">Recorded unit transfer value</th><th class="number">Donor credit</th></tr></thead><tbody>
+    {% for item in laptop.transfers %}<tr><td>{{ item.title }}</td><td><a href="{{ url('/laptops/' ~ item.laptop_id) }}">{{ item.recipient_title }}</a></td><td class="number">{{ item.quantity }}</td><td class="number">{{ item.unit_price|money }}</td><td class="number">{{ (item.unit_price * item.quantity)|money }}</td></tr>{% endfor %}
+  </tbody></table></div>{% else %}<p class="empty small">No transfer credits yet. Assign a recovered batch from another laptop's repair-parts section.</p>{% endif %}
+  <div class="section-heading"><h3>Recovery sales</h3><span class="muted small">Cancel a sale to reverse its proceeds and return sold stock.</span></div>
+  {% if laptop.recovery_sales %}<div class="table-scroll"><table><thead><tr><th>Sale</th><th>Type / quantity</th><th class="number">Actual proceeds</th><th>Status</th><th>Action</th></tr></thead><tbody>
+    {% for sale in laptop.recovery_sales %}<tr><td>{{ sale.title }}<span class="muted small block">{{ sale.created_at[:10] }} · #{{ sale.id }}</span>{% if sale.comment %}<span class="small preserve-lines block">{{ sale.comment }}</span>{% endif %}</td><td>{{ ('Part · ' ~ sale.quantity ~ ' unit(s)') if sale.part_id else 'Chassis / scrap' }}</td><td class="number">{{ sale.amount|money }}</td><td>{% if sale.cancelled %}<span class="badge">Cancelled</span><span class="muted small block">{{ sale.cancelled_at[:10] }}</span>{% else %}<span class="badge status-sold">Completed</span>{% endif %}</td><td>{% if not sale.cancelled %}<form method="post" action="{{ url('/laptops/' ~ laptop.id ~ '/recovery-sales/' ~ sale.id ~ '/cancel') }}" data-confirm="Cancel this sale? Its proceeds will be reversed and any sold parts returned to stock.">{{ csrf(csrf_token) }}<button class="danger subtle small" type="submit">Cancel sale</button></form>{% endif %}</td></tr>{% endfor %}
+  </tbody></table></div>{% else %}<p class="empty small">No parts or scrap sales recorded.</p>{% endif %}
+</section>

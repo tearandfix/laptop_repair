@@ -6,7 +6,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 from uuid import uuid4
 
-from .db import STATUSES, Database
+from .db import DONOR_STATUSES, STATUSES, Database
 
 MAX_FILE_SIZE = 20 * 1024 * 1024
 MAX_MONEY = 99_999_999_999
@@ -114,19 +114,47 @@ def required_row(conn, table, record_id):
 
 
 LAPTOP_QUERY = """
-SELECT l.*, COALESCE(p.repair_cost, 0) AS repair_cost
+SELECT l.*, COALESCE(p.repair_cost, 0) AS repair_cost,
+    COALESCE(p.transfer_cost, 0) AS transfer_cost,
+    COALESCE(t.transfer_credits, 0) AS transfer_credits,
+    COALESCE(s.part_sales, 0) AS part_sales,
+    COALESCE(s.scrap_sales, 0) AS scrap_sales,
+    COALESCE(s.sale_count, 0) AS recovery_sale_count,
+    COALESCE(r.batch_count, 0) AS recovered_batch_count,
+    COALESCE(r.stock_value, 0) AS recovered_stock_value
 FROM laptops l LEFT JOIN (
-    SELECT laptop_id, SUM(unit_price * quantity) AS repair_cost
-    FROM laptop_parts GROUP BY laptop_id
+    SELECT lp.laptop_id, SUM(lp.unit_price * lp.quantity) AS repair_cost,
+        SUM(CASE WHEN p.donor_laptop_id IS NOT NULL THEN lp.unit_price * lp.quantity ELSE 0 END) AS transfer_cost
+    FROM laptop_parts lp JOIN parts p ON p.id = lp.part_id GROUP BY lp.laptop_id
 ) p ON p.laptop_id = l.id
+LEFT JOIN (
+    SELECT p.donor_laptop_id, SUM(lp.unit_price * lp.quantity) AS transfer_credits
+    FROM laptop_parts lp JOIN parts p ON p.id = lp.part_id
+    WHERE p.donor_laptop_id IS NOT NULL GROUP BY p.donor_laptop_id
+) t ON t.donor_laptop_id = l.id
+LEFT JOIN (
+    SELECT donor_laptop_id, COUNT(*) AS sale_count,
+        SUM(CASE WHEN cancelled=0 AND part_id IS NOT NULL THEN amount ELSE 0 END) AS part_sales,
+        SUM(CASE WHEN cancelled=0 AND part_id IS NULL THEN amount ELSE 0 END) AS scrap_sales
+    FROM recovery_sales GROUP BY donor_laptop_id
+) s ON s.donor_laptop_id = l.id
+LEFT JOIN (
+    SELECT donor_laptop_id, COUNT(*) AS batch_count, SUM(stock * unit_price) AS stock_value
+    FROM parts WHERE donor_laptop_id IS NOT NULL GROUP BY donor_laptop_id
+) r ON r.donor_laptop_id = l.id
 """
 
 
 def with_totals(row):
     laptop = dict(row)
     laptop["total_cost"] = laptop["purchase_price"] + laptop["shipping_cost"] + laptop["repair_cost"]
+    laptop["external_cost"] = laptop["total_cost"] - laptop["transfer_cost"]
+    laptop["recovery_cash"] = laptop["part_sales"] + laptop["scrap_sales"]
+    laptop["has_recovery_history"] = bool(laptop["recovered_batch_count"] or laptop["recovery_sale_count"])
+    laptop["is_donor"] = laptop["has_recovery_history"] or laptop["status"] in DONOR_STATUSES
     laptop["profit"] = (
-        None if laptop["resale_price"] is None else laptop["resale_price"] - laptop["total_cost"]
+        None if laptop["resale_price"] is None and not laptop["is_donor"] else
+        (laptop["resale_price"] or 0) + laptop["recovery_cash"] + laptop["transfer_credits"] - laptop["total_cost"]
     )
     return laptop
 
@@ -162,11 +190,25 @@ class Store:
                 raise DomainError("Laptop not found.", 404)
             laptop = with_totals(row)
             laptop["assignments"] = [dict(r) for r in conn.execute(
-                "SELECT lp.*, p.archived FROM laptop_parts lp JOIN parts p ON p.id = lp.part_id "
+                "SELECT lp.*, p.archived, p.donor_laptop_id FROM laptop_parts lp JOIN parts p ON p.id = lp.part_id "
                 "WHERE lp.laptop_id = ? ORDER BY lp.id", (laptop_id,)
             )]
             laptop["attachments"] = [dict(r) for r in conn.execute(
                 "SELECT * FROM attachments WHERE laptop_id = ? ORDER BY id", (laptop_id,)
+            )]
+            laptop["recovered_parts"] = [dict(r) for r in conn.execute(
+                "SELECT p.*, COALESCE(a.assigned, 0) AS assigned, COALESCE(s.sold, 0) AS sold "
+                "FROM parts p LEFT JOIN (SELECT part_id, SUM(quantity) AS assigned FROM laptop_parts GROUP BY part_id) "
+                "a ON a.part_id=p.id LEFT JOIN (SELECT part_id, SUM(quantity) AS sold FROM recovery_sales "
+                "WHERE cancelled=0 GROUP BY part_id) s ON s.part_id=p.id WHERE p.donor_laptop_id=? ORDER BY p.id",
+                (laptop_id,),
+            )]
+            laptop["recovery_sales"] = [dict(r) for r in conn.execute(
+                "SELECT * FROM recovery_sales WHERE donor_laptop_id=? ORDER BY id DESC", (laptop_id,)
+            )]
+            laptop["transfers"] = [dict(r) for r in conn.execute(
+                "SELECT lp.*, l.title AS recipient_title FROM laptop_parts lp JOIN parts p ON p.id=lp.part_id "
+                "JOIN laptops l ON l.id=lp.laptop_id WHERE p.donor_laptop_id=? ORDER BY lp.id", (laptop_id,)
             )]
         return laptop
 
@@ -195,14 +237,20 @@ class Store:
     def parts(self, query="", archived=False):
         with self.db.connect() as conn:
             return [dict(row) for row in conn.execute(
-                "SELECT * FROM parts WHERE archived = ? "
-                "AND (instr(lower(title), lower(?)) > 0 OR instr(lower(comment), lower(?)) > 0) "
-                "ORDER BY title COLLATE NOCASE, id", (int(archived), query, query),
+                "SELECT p.*, l.title AS donor_title FROM parts p LEFT JOIN laptops l ON l.id=p.donor_laptop_id "
+                "WHERE p.archived = ? "
+                "AND (instr(lower(p.title), lower(?)) > 0 OR instr(lower(p.comment), lower(?)) > 0) "
+                "ORDER BY p.title COLLATE NOCASE, p.id", (int(archived), query, query),
             )]
 
     def part(self, part_id):
         with self.db.connect() as conn:
-            return required_row(conn, "parts", part_id)
+            part = required_row(conn, "parts", part_id)
+            part["donor_title"] = (
+                required_row(conn, "laptops", part["donor_laptop_id"])["title"]
+                if part["donor_laptop_id"] is not None else None
+            )
+            return part
 
     def save_part(self, form, part_id=None):
         values = part_values(form)
@@ -224,32 +272,40 @@ class Store:
 
     def delete_part(self, part_id):
         with self.db.connect(write=True) as conn:
-            required_row(conn, "parts", part_id)
-            used = conn.execute("SELECT 1 FROM laptop_parts WHERE part_id = ? LIMIT 1", (part_id,)).fetchone()
+            part = required_row(conn, "parts", part_id)
+            used = part["donor_laptop_id"] is not None or conn.execute(
+                "SELECT 1 FROM laptop_parts WHERE part_id = ? LIMIT 1", (part_id,)
+            ).fetchone()
             if used:
                 conn.execute("UPDATE parts SET archived=1, version=version+1 WHERE id=?", (part_id,))
             else:
                 conn.execute("DELETE FROM parts WHERE id=?", (part_id,))
-        return "Part archived; existing assignments are preserved." if used else "Part deleted."
+        return "Part archived; repair and recovery history are preserved." if used else "Part deleted."
 
     def restore_part(self, part_id):
         with self.db.connect(write=True) as conn:
             required_row(conn, "parts", part_id)
             conn.execute("UPDATE parts SET archived=0, version=version+1 WHERE id=?", (part_id,))
 
-    def assign(self, laptop_id, part_id, quantity):
+    def assign(self, laptop_id, part_id, quantity, transfer_value=""):
         quantity = integer(quantity, minimum=1)
         with self.db.connect(write=True) as conn:
             required_row(conn, "laptops", laptop_id)
             part = required_row(conn, "parts", part_id)
+            if part["donor_laptop_id"] == laptop_id:
+                raise DomainError("A recovered part cannot be assigned back to its own donor laptop.")
             if part["archived"]:
                 raise DomainError("Restore this archived part before assigning it.")
             if part["stock"] < quantity:
                 raise DomainError(f"Not enough stock: only {part['stock']} available.")
+            transfer_value = text(transfer_value, "Transfer value")
+            if transfer_value and part["donor_laptop_id"] is None:
+                raise DomainError("A transfer value can only be entered for a recovered part.")
+            unit_price = money(transfer_value, "Transfer value") if transfer_value else part["unit_price"]
             conn.execute("UPDATE parts SET stock=stock-?, version=version+1 WHERE id=?", (quantity, part_id))
             return conn.execute(
                 "INSERT INTO laptop_parts (laptop_id, part_id, title, unit_price, quantity) VALUES (?, ?, ?, ?, ?)",
-                (laptop_id, part_id, part["title"], part["unit_price"], quantity),
+                (laptop_id, part_id, part["title"], unit_price, quantity),
             ).lastrowid
 
     def change_assignment(self, laptop_id, assignment_id, quantity):
@@ -274,11 +330,77 @@ class Store:
     def delete_laptop(self, laptop_id):
         with self.db.connect(write=True) as conn:
             required_row(conn, "laptops", laptop_id)
+            if conn.execute("SELECT 1 FROM parts WHERE donor_laptop_id=? LIMIT 1", (laptop_id,)).fetchone() or conn.execute(
+                "SELECT 1 FROM recovery_sales WHERE donor_laptop_id=? LIMIT 1", (laptop_id,)
+            ).fetchone():
+                raise DomainError("This donor has recovery history and must be retained. Use the Parted out status instead.", 409)
             for row in conn.execute("SELECT part_id, SUM(quantity) FROM laptop_parts WHERE laptop_id=? GROUP BY part_id", (laptop_id,)):
                 conn.execute("UPDATE parts SET stock=stock+?, version=version+1 WHERE id=?", (row[1], row[0]))
             files = [r[0] for r in conn.execute("SELECT storage_name FROM attachments WHERE laptop_id=?", (laptop_id,))]
             conn.execute("DELETE FROM laptops WHERE id=?", (laptop_id,))
         self.remove_files(files)
+
+    def recover_part(self, laptop_id, form):
+        values = part_values(form)
+        if values["stock"] < 1:
+            raise DomainError("Recover at least one unit.")
+        with self.db.connect(write=True) as conn:
+            donor = required_row(conn, "laptops", laptop_id)
+            if donor["status"] not in DONOR_STATUSES:
+                raise DomainError("Set the laptop status to Unrepairable or Parted out before recovering parts.")
+            return conn.execute(
+                "INSERT INTO parts (title, unit_price, comment, stock, donor_laptop_id) VALUES (?, ?, ?, ?, ?)",
+                (values["title"], values["unit_price"], values["comment"], values["stock"], laptop_id),
+            ).lastrowid
+
+    def sell_recovered_part(self, part_id, form):
+        quantity = integer(form.get("quantity", ""), minimum=1)
+        amount = money(form.get("amount", ""), "Total sale amount")
+        comment = text(form.get("comment", ""), "Sale comment")
+        with self.db.connect(write=True) as conn:
+            part = required_row(conn, "parts", part_id)
+            if part["donor_laptop_id"] is None:
+                raise DomainError("Direct sales are available for recovered parts only.")
+            if part["archived"]:
+                raise DomainError("Restore this archived part before selling it.")
+            if part["stock"] < quantity:
+                raise DomainError(f"Not enough stock: only {part['stock']} available.")
+            conn.execute("UPDATE parts SET stock=stock-?, version=version+1 WHERE id=?", (quantity, part_id))
+            return conn.execute(
+                "INSERT INTO recovery_sales (donor_laptop_id, part_id, title, quantity, amount, comment) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (part["donor_laptop_id"], part_id, part["title"], quantity, amount, comment),
+            ).lastrowid
+
+    def sell_scrap(self, laptop_id, form):
+        title = text(form.get("title", ""), "Sale description", required=True, limit=200)
+        amount = money(form.get("amount", ""), "Sale amount")
+        comment = text(form.get("comment", ""), "Sale comment")
+        with self.db.connect(write=True) as conn:
+            donor = required_row(conn, "laptops", laptop_id)
+            has_batches = conn.execute("SELECT 1 FROM parts WHERE donor_laptop_id=?", (laptop_id,)).fetchone()
+            if donor["status"] not in DONOR_STATUSES and not has_batches:
+                raise DomainError("Set the laptop status to Unrepairable or Parted out before recording scrap proceeds.")
+            return conn.execute(
+                "INSERT INTO recovery_sales (donor_laptop_id, title, amount, comment) VALUES (?, ?, ?, ?)",
+                (laptop_id, title, amount, comment),
+            ).lastrowid
+
+    def cancel_recovery_sale(self, laptop_id, sale_id):
+        with self.db.connect(write=True) as conn:
+            sale = required_row(conn, "recovery_sales", sale_id)
+            if sale["donor_laptop_id"] != laptop_id:
+                raise DomainError("Sale not found on this donor laptop.", 404)
+            if sale["cancelled"]:
+                raise DomainError("This sale has already been cancelled.", 409)
+            if sale["part_id"] is not None:
+                conn.execute(
+                    "UPDATE parts SET stock=stock+?, version=version+1 WHERE id=?", (sale["quantity"], sale["part_id"])
+                )
+            conn.execute(
+                "UPDATE recovery_sales SET cancelled=1, cancelled_at=strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id=?",
+                (sale_id,),
+            )
 
     def add_attachments(self, laptop_id, files):
         if not files or len(files) > 10:
@@ -331,17 +453,29 @@ class Store:
                 logger.exception("Unable to remove attachment %s; will retry on startup", name)
 
     def dashboard(self):
-        laptops = self.laptops()
-        sold = [laptop for laptop in laptops if laptop["status"] == "sold" and laptop["resale_price"] is not None]
         with self.db.connect() as conn:
-            stock_value = sum(row[0] * row[1] for row in conn.execute("SELECT stock, unit_price FROM parts"))
+            laptops = [with_totals(row) for row in conn.execute(LAPTOP_QUERY + " ORDER BY l.id DESC")]
+            stock = [dict(row) for row in conn.execute("SELECT stock, unit_price, donor_laptop_id FROM parts")]
+        sold = [laptop for laptop in laptops if laptop["status"] == "sold" and laptop["resale_price"] is not None]
+        closed = [laptop for laptop in laptops if laptop["status"] in DONOR_STATUSES or laptop in sold]
+        laptop_revenue = sum(laptop["resale_price"] for laptop in sold)
+        recovery_cash = sum(laptop["recovery_cash"] for laptop in laptops)
+        # Transfers allocate costs between laptops, but never create business
+        # revenue or profit, even when only one side has reached a closed status.
+        revenue = laptop_revenue + recovery_cash
+        external_cost = sum(laptop["external_cost"] for laptop in laptops)
         return {
             "count": len(laptops),
-            "total_cost": sum(laptop["total_cost"] for laptop in laptops),
-            "investment": sum(laptop["total_cost"] for laptop in laptops if laptop["status"] != "sold"),
-            "stock_value": stock_value,
-            "revenue": sum(laptop["resale_price"] for laptop in sold),
-            "profit": sum(laptop["profit"] for laptop in sold),
+            "total_cost": external_cost,
+            "investment": sum(laptop["external_cost"] for laptop in laptops if laptop["status"] not in DONOR_STATUSES | {"sold"}),
+            "stock_value": sum(part["stock"] * part["unit_price"] for part in stock),
+            "recovered_stock_value": sum(part["stock"] * part["unit_price"] for part in stock if part["donor_laptop_id"] is not None),
+            "laptop_revenue": laptop_revenue,
+            "recovery_cash": recovery_cash,
+            "transfer_credits": sum(laptop["transfer_credits"] for laptop in laptops),
+            "revenue": revenue,
+            "profit": revenue - sum(laptop["external_cost"] for laptop in closed),
+            "workspace_result": revenue - external_cost,
             "missing_sales": sum(laptop["status"] == "sold" and laptop["resale_price"] is None for laptop in laptops),
             "status_counts": {status: sum(laptop["status"] == status for laptop in laptops) for status in STATUSES},
             "recent": laptops[:5],

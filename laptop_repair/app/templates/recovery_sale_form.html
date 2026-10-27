@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import csrf %}
+{% block title %}{{ 'Sell recovered part' if part else 'Record chassis / scrap sale' }} · Laptop Repair{% endblock %}
+{% block content %}
+<a class="back-link" href="{{ url('/laptops/' ~ laptop.id) }}">← Donor: {{ laptop.title }}</a>
+<div class="page-heading"><div><h1>{{ 'Sell recovered part' if part else 'Record chassis / scrap sale' }}</h1><p class="muted">Actual proceeds will be credited to donor #{{ laptop.id }}.</p></div></div>
+{% if part %}<div class="notice"><strong>{{ part.title }}</strong> · Batch #{{ part.id }} · {{ part.stock }} available · Estimated unit value {{ part.unit_price|money }}</div>{% endif %}
+{% if part and part.archived %}<div class="warning">Restore this archived batch in Parts inventory before selling units.</div>{% endif %}
+<form class="panel form-panel" method="post" action="{{ url('/parts/' ~ part.id ~ '/sell') if part else url('/laptops/' ~ laptop.id ~ '/scrap') }}">
+  {{ csrf(csrf_token) }}
+  {% if part %}<label>Quantity sold<input type="number" name="quantity" value="{{ values.get('quantity', '1') }}" min="1" max="{{ part.stock }}" step="1" required></label>
+  {% else %}<label>Sale description<input name="title" value="{{ values.get('title', '') }}" maxlength="200" required placeholder="Remaining chassis / scrap"></label><p class="muted small">For parts already recorded in inventory, use their Sell action so stock is deducted. Record this sale here only; do not also enter it as the laptop's resale price.</p>{% endif %}
+  <label>Total sale amount (UAH)<input type="number" name="amount" value="{{ values.get('amount', '') }}" min="0" max="999999999.99" step="0.01" required><small>Total proceeds for this sale, not a per-unit price.</small></label>
+  <label>Sale comment<textarea name="comment" rows="4" maxlength="10000" placeholder="Buyer, marketplace, or receipt reference…">{{ values.get('comment', '') }}</textarea></label>
+  <div class="actions"><button class="primary" type="submit">Record sale</button><a class="button subtle" href="{{ url('/laptops/' ~ laptop.id) }}">Cancel</a></div>
+</form>
+{% endblock %}

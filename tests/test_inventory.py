@@ -35,7 +35,7 @@ def test_version_one_database_migrates_without_losing_records(tmp_path):
     store.initialize()
     assert store.laptop(1)["resale_description"] == "Ready to sell\nCharger included"
     with store.db.connect() as conn:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 3
 
 
 def test_exact_profit_and_historical_prices(store):

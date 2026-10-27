@@ -13,14 +13,14 @@
 {% macro laptop_table(laptops, url, statuses) %}
 <div class="table-scroll">
   <table>
-    <thead><tr><th>Laptop</th><th>Status</th><th class="number">Purchase</th><th class="number">Shipping</th><th class="number">Parts</th><th class="number">Total cost</th><th class="number">Resale</th><th class="number">Profit</th></tr></thead>
+    <thead><tr><th>Laptop</th><th>Status</th><th class="number">Purchase</th><th class="number">Shipping</th><th class="number">Parts</th><th class="number">Total cost</th><th class="number">Resale</th><th class="number">Net result</th></tr></thead>
     <tbody>
       {% for laptop in laptops %}
       <tr>
         <td><a class="record-title" href="{{ url('/laptops/' ~ laptop.id) }}">{{ laptop.title }}</a><span class="muted small block">#{{ laptop.id }}</span></td>
         <td>{{ badge(laptop.status, statuses) }}{% if laptop.status == 'sold' and laptop.resale_price is none %}<span class="warning-text small block">Resale price missing</span>{% endif %}</td>
         <td class="number">{{ laptop.purchase_price|money }}</td><td class="number">{{ laptop.shipping_cost|money }}</td><td class="number">{{ laptop.repair_cost|money }}</td>
-        <td class="number strong">{{ laptop.total_cost|money }}</td><td class="number">{{ laptop.resale_price|money }}</td><td class="number">{{ profit(laptop.profit) }}</td>
+        <td class="number strong">{{ laptop.total_cost|money }}</td><td class="number">{{ laptop.resale_price|money }}</td><td class="number">{{ profit(laptop.profit) }}{% if laptop.is_donor %}<span class="muted small block">After recovery</span>{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>

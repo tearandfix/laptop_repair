@@ -18,7 +18,7 @@ from itsdangerous import BadSignature, URLSafeSerializer
 from starlette.datastructures import FormData, UploadFile
 from starlette.exceptions import HTTPException
 
-from .db import STATUSES
+from .db import DONOR_STATUSES, STATUSES
 from .services import DomainError, Store, integer, money_display, money_input
 
 APP_DIR = Path(__file__).parent
@@ -116,6 +116,7 @@ def create_app(data_dir=None):
                 "url": lambda path: request.state.prefix + path,
                 "csrf_token": request.state.csrf_token,
                 "statuses": STATUSES,
+                "donor_statuses": DONOR_STATUSES,
                 "notice": request.query_params.get("notice", ""),
                 **context,
             },
@@ -176,7 +177,8 @@ def create_app(data_dir=None):
     @app.get("/laptops/{laptop_id}")
     def laptop_detail(request: Request, laptop_id: int):
         store = request.app.state.store
-        return page(request, "laptop_detail.html", nav="laptops", laptop=store.laptop(laptop_id), parts=store.parts())
+        parts = [part for part in store.parts() if part["donor_laptop_id"] != laptop_id]
+        return page(request, "laptop_detail.html", nav="laptops", laptop=store.laptop(laptop_id), parts=parts)
 
     @app.get("/laptops/{laptop_id}/edit")
     def laptop_edit(request: Request, laptop_id: int):
@@ -203,7 +205,7 @@ def create_app(data_dir=None):
     @app.post("/laptops/{laptop_id}/parts")
     def assign_part(request: Request, laptop_id: int, form: CheckedForm):
         part_id = integer(form.get("part_id", ""), "Part", minimum=1, maximum=2**31)
-        request.app.state.store.assign(laptop_id, part_id, form.get("quantity", ""))
+        request.app.state.store.assign(laptop_id, part_id, form.get("quantity", ""), form.get("transfer_value", ""))
         return redirect(request, f"/laptops/{laptop_id}", "Part assigned; stock updated.")
 
     @app.post("/laptops/{laptop_id}/parts/{assignment_id}/edit")
@@ -280,6 +282,67 @@ def create_app(data_dir=None):
     def part_restore(request: Request, part_id: int, form: CheckedForm):
         request.app.state.store.restore_part(part_id)
         return redirect(request, "/parts", "Part restored.")
+
+    @app.get("/laptops/{laptop_id}/recover")
+    def recovery_form(request: Request, laptop_id: int):
+        laptop = request.app.state.store.laptop(laptop_id)
+        return page(request, "recovery_form.html", nav="laptops", laptop=laptop,
+                    values={"stock": "1", "unit_price": "0.00"})
+
+    @app.post("/laptops/{laptop_id}/recover")
+    def recover_part(request: Request, laptop_id: int, form: CheckedForm):
+        store = request.app.state.store
+        laptop = store.laptop(laptop_id)
+        try:
+            store.recover_part(laptop_id, form)
+        except DomainError as error:
+            return page(request, "recovery_form.html", nav="laptops", laptop=laptop, values=form,
+                        error=error.message, status_code=error.status_code)
+        return redirect(request, f"/laptops/{laptop_id}", "Recovered part batch added to inventory. No income recorded yet.")
+
+    @app.get("/parts/{part_id}/sell")
+    def part_sale_form(request: Request, part_id: int):
+        store = request.app.state.store
+        part = store.part(part_id)
+        if part["donor_laptop_id"] is None:
+            raise DomainError("Direct sales are available for recovered parts only.")
+        return page(request, "recovery_sale_form.html", nav="parts", part=part,
+                    laptop=store.laptop(part["donor_laptop_id"]), values={"quantity": "1"})
+
+    @app.post("/parts/{part_id}/sell")
+    def part_sale(request: Request, part_id: int, form: CheckedForm):
+        store = request.app.state.store
+        part = store.part(part_id)
+        if part["donor_laptop_id"] is None:
+            raise DomainError("Direct sales are available for recovered parts only.")
+        laptop = store.laptop(part["donor_laptop_id"])
+        try:
+            store.sell_recovered_part(part_id, form)
+        except DomainError as error:
+            return page(request, "recovery_sale_form.html", nav="parts", part=part, laptop=laptop, values=form,
+                        error=error.message, status_code=error.status_code)
+        return redirect(request, f"/laptops/{laptop['id']}", "Part sale recorded; stock and donor proceeds updated.")
+
+    @app.get("/laptops/{laptop_id}/scrap")
+    def scrap_sale_form(request: Request, laptop_id: int):
+        return page(request, "recovery_sale_form.html", nav="laptops", part=None,
+                    laptop=request.app.state.store.laptop(laptop_id), values={})
+
+    @app.post("/laptops/{laptop_id}/scrap")
+    def scrap_sale(request: Request, laptop_id: int, form: CheckedForm):
+        store = request.app.state.store
+        laptop = store.laptop(laptop_id)
+        try:
+            store.sell_scrap(laptop_id, form)
+        except DomainError as error:
+            return page(request, "recovery_sale_form.html", nav="laptops", part=None, laptop=laptop, values=form,
+                        error=error.message, status_code=error.status_code)
+        return redirect(request, f"/laptops/{laptop_id}", "Chassis / scrap proceeds recorded.")
+
+    @app.post("/laptops/{laptop_id}/recovery-sales/{sale_id}/cancel")
+    def cancel_recovery_sale(request: Request, laptop_id: int, sale_id: int, form: CheckedForm):
+        request.app.state.store.cancel_recovery_sale(laptop_id, sale_id)
+        return redirect(request, f"/laptops/{laptop_id}", "Sale cancelled; proceeds reversed and any sold parts returned to stock.")
 
     return app
 

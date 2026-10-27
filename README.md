@@ -4,13 +4,14 @@ A web-based application for tracking broken laptops purchased on eBay, their jou
 
 All purchases and sales are entered manually. The initial currency is **Ukrainian hryvnia (UAH)**.
 
-**Version 1.1.0:** The application and Home Assistant add-on package are implemented. See [Run locally](#run-locally) to try it, or [Install in Home Assistant](#install-in-home-assistant) for deployment.
+**Version 1.2.0:** Includes donor-linked parts recovery, reuse credits, and parts/scrap sales. See [Run locally](#run-locally) to try it, or [Install in Home Assistant](#install-in-home-assistant) for deployment.
 
 ## Contents
 
 - [Features](#features)
 - [Laptop records and statuses](#laptop-records-and-statuses)
 - [Parts inventory](#parts-inventory)
+- [Unrepairable laptops and recovery](#unrepairable-laptops-and-recovery)
 - [Costs and profit](#costs-and-profit)
 - [Attachments](#attachments)
 - [Application screens](#application-screens)
@@ -33,6 +34,9 @@ All purchases and sales are entered manually. The initial currency is **Ukrainia
 - Assign parts to laptops and automatically deduct stock.
 - Return stock when a repair-part assignment is reduced or removed.
 - Preserve assigned part prices so later inventory price changes do not rewrite repair costs.
+- Recover parts from unrepairable laptops into separate donor-linked stock batches.
+- Track internal reuse credits, actual part/scrap sales, and net loss after recovery.
+- Cancel recovery sales with automatic stock returns and proceeds reversal.
 - Upload and download documents, invoices, receipts, and photos for each laptop.
 - Calculate repair costs, total costs, and profit automatically.
 - View aggregate spending, available stock value, sales revenue, and realized profit.
@@ -48,7 +52,7 @@ Each laptop has the following information:
 | Title | Required descriptive name, such as `Lenovo ThinkPad T480 — no power`. |
 | Purchase price | Amount paid for the laptop in UAH, including any purchasing fees. |
 | Shipping cost | Total shipping cost in UAH, entered separately from purchase price. |
-| Status | One of the eight statuses below; defaults to `purchased`. |
+| Status | One of the ten statuses below; defaults to `purchased`. |
 | Repair parts | Assigned inventory parts, quantities, and recorded unit prices. |
 | Attached files | Uploaded documents and photos associated with this laptop. |
 | Resale price | Optional sale amount in UAH; leave empty until known. |
@@ -68,10 +72,12 @@ The stored status values are exactly:
 6. `fixed`
 7. `listed`
 8. `sold`
+9. `unrepairable`
+10. `parted_out`
 
 The interface presents readable labels, such as “Shipped USA” and “NP accepted.” A dropdown allows any status to be selected manually: stages may be skipped, and a record may be moved backwards. Status changes do not change inventory quantities or set a resale price automatically.
 
-Deleting a laptop returns its assigned parts to stock and removes its attachment records and files. The interface asks for confirmation before deletion.
+Deleting a laptop returns its assigned parts to stock, reverses any associated donor credits, and removes its attachment records and files. The interface asks for confirmation before deletion. A donor with recovered batches or recovery sales cannot be deleted, preserving the history of its original costs and recovered parts; use `parted_out` to close it instead.
 
 ## Parts inventory
 
@@ -80,9 +86,10 @@ Each inventory item contains:
 | Field | Description |
 | --- | --- |
 | Title | Required part name. |
-| Unit price | Cost of one unit in UAH. |
+| Unit price | Cost of one purchased unit, or estimated value of one recovered unit, in UAH. |
 | Comment | Optional description, compatibility information, or supplier notes. |
 | Stock quantity | Non-negative whole number of currently available, unassigned units. |
+| Donor laptop | For recovered batches, an immutable link to the laptop the parts came from. |
 
 Stock can be edited to record new purchases or correct an inventory count. The quantity entered is the **available quantity**, not the total quantity including parts already installed in laptops.
 
@@ -94,14 +101,69 @@ Stock can be edited to record new purchases or correct an inventory count. The q
 - Removing an assignment returns its entire quantity to stock.
 - Changes are made within a database transaction to prevent overselling during simultaneous requests.
 - Editing a stale inventory form is rejected if its stock or details changed after the form was opened. Reload the record before saving again.
-- Each new assignment records the part's current unit price and title. Later edits to the inventory item do not change that assignment's recorded cost or name.
+- Each new assignment records the part's current unit price and title. Recovered parts allow an optional per-unit transfer value instead of the current estimate. Later edits to inventory do not change an assignment's recorded cost or name.
 - Updating an existing assignment's quantity preserves its recorded unit price. To use a new price, add a separate assignment.
 - The same inventory item may appear in more than one assignment on a laptop, allowing different recorded prices.
-- Inventory items that have never been assigned can be permanently deleted.
-- An item referenced by an assignment is archived when deleted. Its history remains accessible through the laptop, but it cannot be assigned again until restored.
+- Purchased items without assignments can be permanently deleted.
+- Assigned items and all recovered batches are archived instead of deleted. Their history remains accessible through the laptop, but archived items cannot be assigned or sold until restored.
 - Archived items can be restored from the inventory screen. Returning assigned stock to an archived item increases its quantity without automatically restoring it.
 
 The application tracks quantities and per-assignment costs, not individual part serial numbers or purchase batches.
+
+## Unrepairable laptops and recovery
+
+### Recover usable parts
+
+1. Edit the donor laptop and manually select **Unrepairable** when a repair is no longer worthwhile.
+2. In its **Recovery & parting out** section, select **Recover parts**.
+3. Enter a title, positive whole-number quantity, estimated value per unit, and condition/compatibility comment.
+4. Save to create a separate stock batch with a permanent donor link. Identically named purchased or recovered items are not merged.
+5. Select **Parted out** when dismantling is complete. Status changes do not move stock or create sales.
+
+For parts you previously assigned during a repair, use **Remove** in the repair-parts list to return them to their existing inventory item. Do not also enter them as newly recovered parts, which would duplicate stock. If the assigned part came from another donor, removal also reverses that donor's transfer credit.
+
+Recovered parts on the shelf have an **estimated inventory value only**. Recovering them does not generate revenue or reduce the donor's net loss. Stock corrections and estimate changes can be made from the batch's inventory edit page; neither generates income.
+
+### Reuse a recovered part
+
+Open the recipient laptop, select the recovered batch in **Repair parts**, and assign a quantity. The dropdown identifies its donor and batch number.
+
+- Leave **Transfer value per unit** blank to use the batch's current estimate, or enter the value you want allocated to this repair.
+- The recipient is charged `quantity × recorded transfer value` as part of its repair cost.
+- The donor receives an equal **internal transfer credit**.
+- The recorded value stays fixed even if the inventory estimate changes later. Quantity edits preserve it.
+- Reducing/removing an assignment returns stock and reverses the corresponding credit atomically. Deleting the recipient laptop returns all its assigned stock and credits.
+- A recovered batch cannot be assigned back to its own donor.
+
+These credits allocate costs between laptops. They are not cash and are excluded from business-wide revenue and profit, even while the recipient laptop is still unsold.
+
+### Sell recovered parts or remaining scrap
+
+Select **Sell** next to a recovered batch in inventory or on the donor page. Enter quantity and the **total actual sale amount**, not the price per unit. Saving deducts stock and credits the donor with those proceeds. Estimated value is not added again.
+
+Use **Record chassis / scrap sale** for the remaining shell or scrap. This records actual proceeds without a stock movement. If the item is already tracked in inventory, use its batch's Sell action instead. Do not also enter a scrap sale as the laptop's resale price, as that would count it twice.
+
+The donor page lists completed and cancelled recovery sales, including recorded titles, quantities, amounts, comments, and dates. **Cancel sale** reverses the proceeds and returns sold units to their original batch, even if the batch is archived. A cancellation cannot return stock twice. To correct a sale, cancel it and record the corrected sale.
+
+### Donor result and example
+
+```text
+Net result after recovery = laptop resale price (if entered)
+                          + actual parts/scrap sale proceeds
+                          + internal transfer credits
+                          − laptop total cost
+```
+
+For a donor costing **2,000 UAH**:
+
+| Event | Donor net result |
+| --- | ---: |
+| Marked unrepairable | −2,000 UAH |
+| Recover a screen estimated at 700 UAH | −2,000 UAH |
+| Assign that screen to another laptop at a 700 UAH transfer value | −1,300 UAH |
+| Sell the remaining chassis for 200 UAH | −1,100 UAH |
+
+The recipient also carries the 700 UAH transfer cost, so the credit and charge cancel across the workspace. Only the 200 UAH sale increases cash revenue. The donor page separately shows original total costs, estimated available recovered stock, transfer credits, actual part sales, actual scrap sales, and the net result.
 
 ## Costs and profit
 
@@ -129,13 +191,16 @@ Purchasing fees are included in the entered purchase price. There is no separate
 | Resale price | 8,000 UAH |
 | **Profit** | **1,950 UAH** |
 
-- An empty resale price means profit is unknown, displayed as a dash. A resale price of zero is a valid entered value.
-- A laptop can show calculated profit before it is marked `sold`; dashboard **realized profit** only includes sold laptops with a resale price entered.
+- For a regular laptop, an empty resale price means profit is unknown, displayed as a dash. A resale price of zero is valid. Donors instead show their net result after recovery, starting with their full loss even when no resale price is entered.
+- A laptop can show a calculated result before it is marked `sold`. The dashboard uses the recognition rules below rather than summing per-laptop displayed results.
 - Sold laptops without a resale price are highlighted so missing amounts are visible.
-- Dashboard **sales revenue** sums entered resale prices for sold laptops.
-- Dashboard **recorded laptop costs** sums purchase, shipping, and assigned-parts costs across all laptop records.
-- Dashboard **unsold laptop investment** sums those costs for laptops not marked `sold`.
-- Dashboard **available stock value** sums available quantity × current unit price, including archived stock. This is an inventory valuation, not a record of cash purchases.
+- **Cash sales revenue** sums resale prices for sold laptops plus all non-cancelled recovery sales, regardless of the donor's current status.
+- **Recorded external laptop costs** sums purchase, shipping, and assigned **purchased** parts across all laptops. Internal recovered-part transfer costs are excluded to avoid counting the donor purchase cost twice.
+- **Realized profit / loss** is cash sales revenue minus external costs of sold laptops with an entered resale price and laptops marked `unrepairable` or `parted_out`. Written-off donor costs are recognized immediately; subsequent cash recovery sales reduce those losses. Moving a donor back to an open status moves its costs back to open investment.
+- **Open laptop investment** includes external costs for laptops not marked `sold`, `unrepairable`, or `parted_out`.
+- **Result against all laptop costs** is cash sales revenue minus external costs of every laptop, including open laptops. It is independent of internal transfers.
+- **Recovery cash proceeds** and **internal transfer credits** are shown separately. Recovery proceeds are already included in cash sales revenue; transfer credits are never added to business revenue or profit.
+- **Available stock value** includes purchased stock and estimated recovered stock, including archived batches. It is inventory valuation, not income or a record of cash purchases. Unassigned purchased stock is not included in laptop costs.
 
 ## Attachments
 
@@ -152,11 +217,11 @@ Upload one or more files from a laptop's detail page. Each attachment shows its 
 
 ### Dashboard
 
-Summary cards show laptop count, unsold laptop investment, recorded laptop costs, available stock value, sales revenue, and realized profit. Status counts link to the corresponding filtered laptop list.
+Summary cards show laptop count, open investment, external laptop costs, available stock value, cash sales revenue, realized profit/loss, recovery cash proceeds, internal transfers, and the result against all laptop costs. Status counts link to the corresponding filtered laptop list.
 
 ### Laptops
 
-A searchable, status-filtered list shows each laptop's title, status, purchase price, shipping, repair cost, total cost, resale price, and profit. Select a record to edit its details, assign parts, or manage attachments.
+A searchable, status-filtered list shows each laptop's title, status, purchase price, shipping, repair cost, total cost, resale price, and net result. Select a record to edit its details, assign parts, or manage attachments. Donor records also show recovered batches, reuse credits, sales history, and recovery actions.
 
 ### Parts inventory
 
@@ -192,6 +257,8 @@ The add-on does not require access to Home Assistant's API or devices. Its datab
 Back up the add-on, replace the local add-on source with the new version, reload the store, and rebuild/update it using Home Assistant. Do not remove its persistent data. See [Backups and recovery](#backups-and-recovery).
 
 Version 1.1.0 automatically adds the resale listing description field to existing databases on startup. Existing laptops start with an empty description.
+
+Version 1.2.0 upgrades the database to schema version 3, adding the two donor statuses, batch donor links, and recovery sales. Migration preserves existing laptop IDs, parts assignments, descriptions, and attachments. Schema updates are transactional and references are checked before committing. Existing parts remain purchased stock. Older application versions cannot open this upgraded schema; restore the previous backup if rolling back the application.
 
 ## Run locally
 
@@ -308,8 +375,9 @@ Project layout:
 ### Data model
 
 - `laptops`: editable purchase/sale details and status.
-- `parts`: inventory details, available stock, and archive flag.
-- `laptop_parts`: laptop/part references, quantity, and snapshots of assigned title/unit price.
+- `parts`: inventory details, available stock, archive flag, and optional immutable donor reference. Each recovered batch is a separate row.
+- `laptop_parts`: laptop/part references, quantity, and snapshots of assigned title/unit price or transfer value. Donor credits are derived from these assignments.
+- `recovery_sales`: donor reference, optional batch reference (empty for scrap), recorded title/quantity/actual proceeds, comment, and cancellation timestamps.
 - `attachments`: laptop reference, original filename, generated storage name, and file size.
 
 Laptop totals are calculated from assignments rather than saved as independently editable totals. Stock mutations and their associated assignment changes commit or roll back together.
@@ -331,11 +399,15 @@ Tests use isolated temporary data directories. The verification suite covers:
 - Historical assignment prices after inventory edits.
 - Archiving/restoring referenced inventory items.
 - Laptop deletion returning stock and removing attachments.
-- All eight statuses and manual out-of-order changes.
+- All ten statuses and manual out-of-order changes.
 - Upload/download behavior and file-size limits.
 - Ingress-prefixed URLs and redirects.
 - CSRF protection and validation errors.
 - Dashboard revenue/profit rules.
+- Donor-linked recovery, fixed transfer values, and credit reversals on returns or recipient deletion.
+- Direct parts/scrap sales, cancellations, and concurrent sale-versus-assignment stock protection.
+- Exclusion of estimates and transfers from business profit.
+- Version 1/2 database upgrades, preservation of references and files, and migration rollback on invalid references.
 
 Runtime dependencies, including transitive dependencies, are pinned in `laptop_repair/requirements.txt`; direct dependency ranges live in `requirements.in`. To refresh the lock using [uv](https://docs.astral.sh/uv/), run:
 
@@ -346,10 +418,10 @@ uv pip compile laptop_repair/requirements.in --python-version 3.11 \
 
 Run the tests after updating dependencies. The Docker image uses Python 3.13. Run one application process against each data directory; the provided Uvicorn command uses one worker.
 
-### Initial release verification
+### Verification
 
-- **42 automated tests passed** on Python 3.13, covering the workflows above.
-- A real Chromium walkthrough verified creating a part and laptop, assigning stock, uploading a file, recording a sale, and displaying the calculated profit.
+- **64 automated tests passed** on Python 3.13, including recovery accounting, stock concurrency, and migration preservation/rollback.
+- Real Chromium walkthroughs verified the original purchase/repair/sale workflow and the recovery workflow: donor creation, recovery, transfer, direct sale, scrap sale, cancellation, and net-result display.
 - Desktop and mobile layouts were checked at 1440 px and 390 px viewport widths.
 - Python lint checks passed.
 - Docker image builds and installation on a live Home Assistant host still need deployment verification; a Docker daemon was unavailable in the implementation environment.
@@ -366,11 +438,11 @@ Check the add-on/container logs and ensure the configured data directory exists 
 
 ### A part cannot be assigned
 
-Confirm that the item is active, the requested quantity is a positive whole number, and available stock is sufficient. Assigned quantities are already excluded from the available stock count.
+Confirm that the item is active, the requested quantity is a positive whole number, and available stock is sufficient. Assigned and sold quantities are already excluded from available stock. Recovered parts cannot be assigned to their own donor laptop.
 
 ### Profit is blank or absent from the dashboard
 
-A blank resale price means per-laptop profit is unknown. Dashboard realized profit additionally requires the laptop's status to be `sold`.
+A blank resale price means ordinary per-laptop profit is unknown. Donors show their net result after recovery instead. Dashboard realized profit/loss recognizes external costs when a laptop is sold with a resale price or marked unrepairable/parted out; recovery sales count when recorded. Estimated stock and internal transfer credits are not business income.
 
 ### A form reports an expired or invalid session
 

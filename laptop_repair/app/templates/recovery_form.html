@@ -1,0 +1,20 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import csrf %}
+{% block title %}Recover parts · Laptop Repair{% endblock %}
+{% block content %}
+<a class="back-link" href="{{ url('/laptops/' ~ laptop.id) }}">← {{ laptop.title }}</a>
+<div class="page-heading"><div><h1>Recover parts</h1><p class="muted">Create a separate inventory batch linked to donor #{{ laptop.id }}.</p></div></div>
+{% if laptop.status not in donor_statuses %}<div class="warning">First <a href="{{ url('/laptops/' ~ laptop.id ~ '/edit') }}">change this laptop's status</a> to Unrepairable or Parted out.</div>{% endif %}
+<div class="notice">For a part already assigned in the repair-parts list, use <strong>Remove</strong> there to return it to stock. Do not recover that same part a second time.</div>
+<form class="panel form-panel" method="post" action="{{ url('/laptops/' ~ laptop.id ~ '/recover') }}">
+  {{ csrf(csrf_token) }}
+  <label>Part title<input name="title" value="{{ values.get('title', '') }}" required maxlength="200" placeholder="14-inch FHD screen"></label>
+  <div class="form-grid">
+    <label>Recovered quantity<input type="number" name="stock" value="{{ values.get('stock', '1') }}" min="1" max="1000000" step="1" required></label>
+    <label>Estimated unit value (UAH)<input type="number" name="unit_price" value="{{ values.get('unit_price', '') }}" min="0" max="999999999.99" step="0.01" required><small>Informational while in stock. Used as the default transfer value when assigned.</small></label>
+  </div>
+  <label>Comment / condition<textarea name="comment" rows="4" maxlength="10000" placeholder="Test results, compatibility, cosmetic condition…">{{ values.get('comment', '') }}</textarea></label>
+  <p class="muted small">Recovering parts increases inventory without crediting the donor. Credits appear only when parts are reused or sold.</p>
+  <div class="actions"><button class="primary" type="submit">Recover parts</button><a class="button subtle" href="{{ url('/laptops/' ~ laptop.id) }}">Cancel</a></div>
+</form>
+{% endblock %}

@@ -112,6 +112,63 @@ def test_archive_and_restore_through_ui(client):
     assert store.part(part)["archived"] == 0
 
 
+def test_recovery_workflow_through_ui(client):
+    store = client.app.state.store
+    donor = store.save_laptop(laptop_form(title="Donor", status="unrepairable", purchase_price="2000", shipping_cost="0"))
+    recipient = store.save_laptop(laptop_form(title="Recipient"))
+    base = f"/laptops/{donor}"
+    assert "Recover parts" in client.get(base).text
+    assert "Estimated unit value" in client.get(base + "/recover").text
+    response = post(client, base + "/recover", part_form(title="Recovered screen", stock="2", unit_price="700"))
+    assert response.status_code == 303
+    batch = store.parts()[0]["id"]
+    assert "Recovered from" in client.get("/parts").text
+    assert "Estimated unit value" in client.get(f"/parts/{batch}/edit").text
+    assert post(client, f"/laptops/{recipient}/parts", {"part_id": str(batch), "quantity": "1", "transfer_value": "600"}).status_code == 303
+    assert store.laptop(donor)["transfer_credits"] == 60000
+    assert f"donor #{donor}" in client.get(f"/laptops/{recipient}").text
+    assert "Total sale amount" in client.get(f"/parts/{batch}/sell").text
+    assert post(client, f"/parts/{batch}/sell", {"quantity": "1", "amount": "800"}).status_code == 303
+    sale = store.laptop(donor)["recovery_sales"][0]["id"]
+    assert store.part(batch)["stock"] == 0
+    assert "Sale description" in client.get(base + "/scrap").text
+    assert post(client, base + "/scrap", {"title": "Chassis", "amount": "100"}).status_code == 303
+    assert store.laptop(donor)["profit"] == -50000
+    html = client.get(base).text
+    assert "Net result after recovery" in html
+    assert "−500 UAH" in html
+    assert "Recipient" in html
+    assert "Donor history retained" in html
+    assert "Recovery cash proceeds" in client.get("/").text
+    assert post(client, base + f"/recovery-sales/{sale}/cancel").status_code == 303
+    assert store.part(batch)["stock"] == 1
+    assert "Cancelled" in client.get(base).text
+    assert post(client, base + "/delete").status_code == 409
+
+
+def test_recovery_forms_validate_preserve_values_and_require_csrf(client):
+    store = client.app.state.store
+    donor = store.save_laptop(laptop_form(status="parted_out"))
+    batch = store.recover_part(donor, part_form(stock="1"))
+    response = post(client, f"/parts/{batch}/sell", {"quantity": "2", "amount": "99", "comment": "keep my note"})
+    assert response.status_code == 400
+    assert "keep my note" in response.text
+    assert "Not enough stock" in response.text
+    response = post(client, f"/laptops/{donor}/recover", part_form(stock="0", title="<b>Screen</b>"))
+    assert response.status_code == 400
+    assert "&lt;b&gt;Screen&lt;/b&gt;" in response.text
+    response = post(client, f"/laptops/{donor}/scrap", {"title": "Chassis", "amount": "-1"})
+    assert response.status_code == 400
+    sale = store.sell_recovered_part(batch, {"quantity": "1", "amount": "100"})
+    for path in (f"/laptops/{donor}/recover", f"/parts/{batch}/sell", f"/laptops/{donor}/scrap",
+                 f"/laptops/{donor}/recovery-sales/{sale}/cancel"):
+        assert client.post(path, data={}).status_code == 403
+    purchased = store.save_part(part_form())
+    assert client.get(f"/parts/{purchased}/sell").status_code == 400
+    assert post(client, f"/parts/{purchased}/sell", {"quantity": "1", "amount": "100"}).status_code == 400
+    assert store.part(batch)["stock"] == 0
+
+
 def test_upload_download_delete_and_laptop_cleanup(client):
     store = client.app.state.store
     laptop = store.save_laptop(laptop_form())
@@ -207,6 +264,20 @@ def test_ingress_urls_forms_assets_cookies_and_redirects(tmp_path):
         assert response.status_code == 303
         assert response.headers["location"].startswith(prefix + "/laptops/1?")
         assert client.get(response.headers["location"]).status_code == 200
+        store = app.state.store
+        store.save_laptop(edit_laptop(store, 1, status="unrepairable"), 1)
+        response = client.post(prefix + "/laptops/1/recover", data={**part_form(), "csrf_token": csrf}, follow_redirects=False)
+        assert response.status_code == 303
+        assert response.headers["location"].startswith(prefix + "/laptops/1?")
+        batch = store.parts()[0]["id"]
+        for path in ("/laptops/1", "/laptops/1/recover", "/laptops/1/scrap", f"/parts/{batch}/sell", "/parts"):
+            page = client.get(prefix + path)
+            assert page.status_code == 200
+            for url in re.findall(r'(?:href|action|src)="([^"]+)"', page.text):
+                assert url.startswith((prefix + "/", "#", "https://www.ebay.com/"))
+        response = client.post(prefix + f"/parts/{batch}/sell", data={"quantity": "1", "amount": "50", "csrf_token": csrf}, follow_redirects=False)
+        assert response.status_code == 303
+        assert response.headers["location"].startswith(prefix + "/laptops/1?")
 
 
 @pytest.mark.parametrize("prefix", ["//evil.example", "/../escape", "/x?y", "/x\\y"])
