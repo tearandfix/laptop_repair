@@ -91,6 +91,7 @@ def laptop_values(form):
         "resale_price": money(form.get("resale_price", ""), "Resale price", optional=True),
         "status": status,
         "notes": text(form.get("notes", ""), "Notes"),
+        "resale_description": text(form.get("resale_description", ""), "Resale listing description"),
         "ebay_url": url,
     }
 
@@ -174,8 +175,8 @@ class Store:
         with self.db.connect(write=True) as conn:
             if laptop_id is None:
                 cursor = conn.execute(
-                    "INSERT INTO laptops (title, purchase_price, shipping_cost, resale_price, status, notes, ebay_url) "
-                    "VALUES (:title, :purchase_price, :shipping_cost, :resale_price, :status, :notes, :ebay_url)",
+                    "INSERT INTO laptops (title, purchase_price, shipping_cost, resale_price, status, notes, ebay_url, resale_description) "
+                    "VALUES (:title, :purchase_price, :shipping_cost, :resale_price, :status, :notes, :ebay_url, :resale_description)",
                     values,
                 )
                 return cursor.lastrowid
@@ -183,7 +184,8 @@ class Store:
             values.update(id=laptop_id, version=integer(form.get("version", ""), "Record version", minimum=1))
             cursor = conn.execute(
                 "UPDATE laptops SET title=:title, purchase_price=:purchase_price, shipping_cost=:shipping_cost, "
-                "resale_price=:resale_price, status=:status, notes=:notes, ebay_url=:ebay_url, version=version+1 "
+                "resale_price=:resale_price, status=:status, notes=:notes, ebay_url=:ebay_url, "
+                "resale_description=:resale_description, version=version+1 "
                 "WHERE id=:id AND version=:version", values,
             )
             if not cursor.rowcount:

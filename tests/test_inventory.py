@@ -1,3 +1,4 @@
+import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
 
@@ -6,6 +7,35 @@ import pytest
 from app.db import STATUSES
 from app.services import DomainError, Store, money, money_display, money_input
 from conftest import edit_laptop, edit_part, laptop_form, part_form
+
+
+def test_version_one_database_migrates_without_losing_records(tmp_path):
+    with sqlite3.connect(tmp_path / "laptop_repair.sqlite3") as conn:
+        conn.executescript("""
+            CREATE TABLE laptops (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL, purchase_price INTEGER NOT NULL,
+                shipping_cost INTEGER NOT NULL, resale_price INTEGER,
+                status TEXT NOT NULL DEFAULT 'purchased',
+                notes TEXT NOT NULL DEFAULT '', ebay_url TEXT NOT NULL DEFAULT '',
+                version INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL DEFAULT '2026-10-27T00:00:00Z'
+            );
+            INSERT INTO laptops (title, purchase_price, shipping_cost, notes)
+            VALUES ('Existing laptop', 12345, 600, 'Original repair notes');
+            PRAGMA user_version = 1;
+        """)
+    store = Store(tmp_path)
+    store.initialize()
+    laptop = store.laptop(1)
+    assert laptop["resale_description"] == ""
+    assert laptop["purchase_price"] == 12345
+    assert laptop["notes"] == "Original repair notes"
+    store.save_laptop(edit_laptop(store, 1, resale_description="Ready to sell\nCharger included"), 1)
+    store.initialize()
+    assert store.laptop(1)["resale_description"] == "Ready to sell\nCharger included"
+    with store.db.connect() as conn:
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 2
 
 
 def test_exact_profit_and_historical_prices(store):

@@ -12,7 +12,7 @@ COPY app ./app
 # Supervisor supplies the io.hass.* architecture/type/version labels at build time.
 LABEL org.opencontainers.image.title="Laptop Repair Manager" \
       org.opencontainers.image.description="Laptop repair inventory and resale tracking" \
-      org.opencontainers.image.version="1.0.0"
+      org.opencontainers.image.version="1.1.0"
 
 EXPOSE 8099
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s \

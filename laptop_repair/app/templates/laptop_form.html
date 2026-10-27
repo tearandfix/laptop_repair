@@ -15,6 +15,7 @@
   </div>
   <label>eBay listing URL <span class="muted">(optional)</span><input type="url" name="ebay_url" value="{{ values.get('ebay_url', '') }}" maxlength="2000" placeholder="https://www.ebay.com/itm/…"></label>
   <label>Notes <span class="muted">(optional)</span><textarea name="notes" rows="5" maxlength="10000" placeholder="Condition, diagnosis, repair notes…">{{ values.get('notes', '') }}</textarea></label>
+  <label>Resale listing description <span class="muted">(optional)</span><textarea name="resale_description" rows="8" maxlength="10000" placeholder="Describe the laptop for potential buyers: specifications, condition, repairs, and included accessories…">{{ values.get('resale_description', '') }}</textarea></label>
   {% if not laptop %}<p class="muted small">Save the laptop to assign repair parts and attach documents.</p>{% endif %}
   <div class="actions"><button class="primary" type="submit">{{ 'Save changes' if laptop else 'Add laptop' }}</button><a class="button subtle" href="{{ url('/laptops/' ~ laptop.id) if laptop else url('/laptops') }}">Cancel</a>{% if error and laptop %}<a href="{{ url('/laptops/' ~ laptop.id ~ '/edit') }}">Reload current record</a>{% endif %}</div>
 </form>

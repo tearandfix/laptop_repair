@@ -49,6 +49,33 @@ def test_full_purchase_repair_sale_workflow(client):
     assert client.get(detail).status_code == 404
 
 
+def test_multiline_resale_description_create_edit_display_and_clear(client):
+    store = client.app.state.store
+    description = "ThinkPad T480\n\nRepaired and tested.\n<script>Plain text only</script>"
+    response = post(client, "/laptops/new", laptop_form(resale_description=description))
+    assert response.status_code == 303
+    laptop = store.laptops()[0]
+    assert laptop["resale_description"] == description
+    detail = f"/laptops/{laptop['id']}"
+    html = client.get(detail).text
+    assert 'class="preserve-lines">ThinkPad T480\n\nRepaired and tested.' in html
+    assert "&lt;script&gt;Plain text only&lt;/script&gt;" in html
+    assert "<script>Plain text only</script>" not in html
+    edit_html = client.get(detail + "/edit").text
+    assert '<textarea name="resale_description"' in edit_html
+    assert "ThinkPad T480\n\nRepaired and tested." in edit_html
+    updated = "Updated listing\nIncludes charger"
+    form = edit_laptop(store, laptop["id"], resale_description=updated)
+    invalid = post(client, detail + "/edit", {**form, "purchase_price": "-1"})
+    assert invalid.status_code == 400
+    assert updated in invalid.text
+    assert post(client, detail + "/edit", form).status_code == 303
+    assert store.laptop(laptop["id"])["resale_description"] == updated
+    assert post(client, detail + "/edit", edit_laptop(store, laptop["id"], resale_description="x" * 10001)).status_code == 400
+    assert post(client, detail + "/edit", edit_laptop(store, laptop["id"], resale_description="")).status_code == 303
+    assert store.laptop(laptop["id"])["resale_description"] == ""
+
+
 def test_csrf_missing_forged_and_cross_browser(client, tmp_path):
     csrf = token(client)
     assert client.post("/parts/new", data=part_form()).status_code == 403

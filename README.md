@@ -4,7 +4,7 @@ A web-based application for tracking broken laptops purchased on eBay, their jou
 
 All purchases and sales are entered manually. The initial currency is **Ukrainian hryvnia (UAH)**.
 
-**Version 1.0.0:** The application and Home Assistant add-on package are implemented. See [Run locally](#run-locally) to try it, or [Install in Home Assistant](#install-in-home-assistant) for deployment.
+**Version 1.1.0:** The application and Home Assistant add-on package are implemented. See [Run locally](#run-locally) to try it, or [Install in Home Assistant](#install-in-home-assistant) for deployment.
 
 ## Contents
 
@@ -52,6 +52,7 @@ Each laptop has the following information:
 | Repair parts | Assigned inventory parts, quantities, and recorded unit prices. |
 | Attached files | Uploaded documents and photos associated with this laptop. |
 | Resale price | Optional sale amount in UAH; leave empty until known. |
+| Resale listing description | Optional multiline text for the resale listing, up to 10,000 characters. Line breaks are preserved on the detail page. |
 | Notes | Optional free-text repair notes or purchase details. |
 | eBay URL | Optional link to the original listing. |
 
@@ -189,6 +190,8 @@ The add-on does not require access to Home Assistant's API or devices. Its datab
 ### Updates
 
 Back up the add-on, replace the local add-on source with the new version, reload the store, and rebuild/update it using Home Assistant. Do not remove its persistent data. See [Backups and recovery](#backups-and-recovery).
+
+Version 1.1.0 automatically adds the resale listing description field to existing databases on startup. Existing laptops start with an empty description.
 
 ## Run locally
 

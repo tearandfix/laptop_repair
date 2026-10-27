@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS laptops (
         'purchased', 'shipped_usa', 'np_accepted', 'shipped_ua',
         'delivered', 'fixed', 'listed', 'sold')),
     notes TEXT NOT NULL DEFAULT '',
+    resale_description TEXT NOT NULL DEFAULT '',
     ebay_url TEXT NOT NULL DEFAULT '',
     version INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
@@ -58,7 +59,6 @@ CREATE INDEX IF NOT EXISTS laptop_parts_laptop ON laptop_parts(laptop_id);
 CREATE INDEX IF NOT EXISTS laptop_parts_part ON laptop_parts(part_id);
 CREATE INDEX IF NOT EXISTS attachments_laptop ON attachments(laptop_id);
 CREATE INDEX IF NOT EXISTS laptops_status ON laptops(status);
-PRAGMA user_version = 1;
 """
 
 
@@ -71,9 +71,15 @@ class Database:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         with self.connect() as conn:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
-            if version > 1:
+            if version > 2:
                 raise RuntimeError("Database is newer than this application version.")
-            conn.executescript(SCHEMA)
+            # executescript ends the previous transaction; start a new write
+            # transaction for schema creation and migration together.
+            conn.executescript("BEGIN IMMEDIATE;\n" + SCHEMA)
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(laptops)")}
+            if "resale_description" not in columns:
+                conn.execute("ALTER TABLE laptops ADD COLUMN resale_description TEXT NOT NULL DEFAULT ''")
+            conn.execute("PRAGMA user_version = 2")
 
     @contextmanager
     def connect(self, *, write=False):
