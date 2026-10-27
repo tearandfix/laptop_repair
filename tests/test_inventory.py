@@ -140,10 +140,14 @@ def test_money_format_and_precision():
     assert money("0.29") * 3 == 87
     assert money("1.1") == 110
     assert money_input(123456789) == "1234567.89"
-    assert money_display(123456789) == "1,234,567.89 UAH"
+    assert money_display(123456789) == "1,234,568 UAH"
     assert money_input(None) == ""
     assert money_display(None) == "—"
-    assert money_display(-1) == "−0.01 UAH"
+    assert money_display(-1) == "0 UAH"
+    assert money_display(60000) == "600 UAH"
+    assert money_display(60049) == "600 UAH"
+    assert money_display(60050) == "601 UAH"
+    assert money_display(-60050) == "−601 UAH"
 
 
 def test_invalid_inputs_do_not_create_records(store):

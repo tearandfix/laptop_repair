@@ -31,10 +31,10 @@ def test_full_purchase_repair_sale_workflow(client):
     detail = f"/laptops/{laptop_id}"
     assert post(client, detail + "/parts", {"part_id": str(part_id), "quantity": "2"}).status_code == 303
     assert store.part(part_id)["stock"] == 3
-    assert "5,400.00 UAH" in client.get(detail).text
+    assert "5,400 UAH" in client.get(detail).text
     assert post(client, detail + "/edit", edit_laptop(store, laptop_id, status="sold", resale_price="7000.50")).status_code == 303
-    assert "1,600.50 UAH" in client.get(detail).text
-    assert "1,600.50 UAH" in client.get("/").text
+    assert "1,601 UAH" in client.get(detail).text
+    assert "1,601 UAH" in client.get("/").text
     assert "ThinkPad T480" in client.get("/laptops?status=sold&q=thinkpad").text
     assert "No laptops found" in client.get("/laptops?status=fixed").text
     assert post(client, f"/parts/{part_id}/edit", edit_part(store, part_id, unit_price="500")).status_code == 303

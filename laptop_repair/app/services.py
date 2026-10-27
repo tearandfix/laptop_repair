@@ -65,9 +65,10 @@ def money_input(cents):
 def money_display(cents):
     if cents is None:
         return "—"
-    sign = "−" if cents < 0 else ""
-    whole, fraction = divmod(abs(cents), 100)
-    return f"{sign}{whole:,}.{fraction:02d} UAH"
+    # Round half away from zero using integer arithmetic; avoid displaying −0.
+    whole = (abs(cents) + 50) // 100
+    sign = "−" if cents < 0 and whole else ""
+    return f"{sign}{whole:,} UAH"
 
 
 def laptop_values(form):

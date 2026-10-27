@@ -104,7 +104,7 @@ The application tracks quantities and per-assignment costs, not individual part 
 
 ## Costs and profit
 
-Amounts are stored as **integer kopiykas** and displayed as UAH with two decimal places. Calculations do not use binary floating-point money values.
+Amounts are stored as **integer kopiykas** and displayed rounded to the nearest whole UAH, without decimal places (for example, `600 UAH`). Half-UAH values round away from zero. Calculations and editable form values retain their exact kopiyka precision; rounding applies only to displayed amounts. Calculations do not use binary floating-point money values.
 
 ```text
 Repair cost = sum(assigned quantity × recorded unit price)
@@ -120,13 +120,13 @@ Purchasing fees are included in the entered purchase price. There is no separate
 
 | Item | Amount |
 | --- | ---: |
-| Purchase price | 4,000.00 UAH |
-| Shipping cost | 800.00 UAH |
-| SSD: 1 × 650.00 UAH | 650.00 UAH |
-| RAM: 2 × 300.00 UAH | 600.00 UAH |
-| **Total cost** | **6,050.00 UAH** |
-| Resale price | 8,000.00 UAH |
-| **Profit** | **1,950.00 UAH** |
+| Purchase price | 4,000 UAH |
+| Shipping cost | 800 UAH |
+| SSD: 1 × 650 UAH | 650 UAH |
+| RAM: 2 × 300 UAH | 600 UAH |
+| **Total cost** | **6,050 UAH** |
+| Resale price | 8,000 UAH |
+| **Profit** | **1,950 UAH** |
 
 - An empty resale price means profit is unknown, displayed as a dash. A resale price of zero is a valid entered value.
 - A laptop can show calculated profit before it is marked `sold`; dashboard **realized profit** only includes sold laptops with a resale price entered.
