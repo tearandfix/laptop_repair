@@ -1,0 +1,5 @@
+{% extends 'base.html' %}
+{% block title %}Request unsuccessful · Laptop Repair{% endblock %}
+{% block content %}
+<section class="panel empty"><p class="eyebrow">{{ code }}</p><h1>Unable to complete the request</h1><p>Use your browser’s Back button to review the form, or return to your workspace.</p><div class="actions centered"><a class="button primary" href="{{ url('/laptops') }}">Laptops</a><a class="button" href="{{ url('/parts') }}">Parts inventory</a></div></section>
+{% endblock %}

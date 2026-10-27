@@ -1,0 +1,21 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import csrf %}
+{% block title %}{{ 'Edit' if laptop else 'Add' }} laptop · Laptop Repair{% endblock %}
+{% block content %}
+<a class="back-link" href="{{ url('/laptops/' ~ laptop.id) if laptop else url('/laptops') }}">← {{ 'Laptop details' if laptop else 'Laptops' }}</a>
+<div class="page-heading"><div><h1>{{ 'Edit laptop' if laptop else 'Add laptop' }}</h1><p class="muted">Enter costs in UAH. Purchasing fees belong in the purchase price.</p></div></div>
+<form class="panel form-panel" method="post" action="{{ url('/laptops/' ~ laptop.id ~ '/edit') if laptop else url('/laptops/new') }}">
+  {{ csrf(csrf_token) }}{% if laptop %}<input type="hidden" name="version" value="{{ values.get('version', laptop.version) }}">{% endif %}
+  <label>Title<input name="title" value="{{ values.get('title', '') }}" required maxlength="200" placeholder="Lenovo ThinkPad T480 — no power"></label>
+  <div class="form-grid">
+    <label>Purchase price (UAH)<input type="number" name="purchase_price" min="0" max="999999999.99" step="0.01" value="{{ values.get('purchase_price', '') }}" required></label>
+    <label>Shipping cost (UAH)<input type="number" name="shipping_cost" min="0" max="999999999.99" step="0.01" value="{{ values.get('shipping_cost', '') }}" required></label>
+    <label>Resale price (UAH)<input type="number" name="resale_price" min="0" max="999999999.99" step="0.01" value="{{ values.get('resale_price', '') }}" placeholder="Not sold yet"><small>Leave blank until known. Zero is a valid price.</small></label>
+    <label>Status<select name="status">{% for value, label in statuses.items() %}<option value="{{ value }}" {% if values.get('status', 'purchased') == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select><small>Any status can be selected at any time.</small></label>
+  </div>
+  <label>eBay listing URL <span class="muted">(optional)</span><input type="url" name="ebay_url" value="{{ values.get('ebay_url', '') }}" maxlength="2000" placeholder="https://www.ebay.com/itm/…"></label>
+  <label>Notes <span class="muted">(optional)</span><textarea name="notes" rows="5" maxlength="10000" placeholder="Condition, diagnosis, repair notes…">{{ values.get('notes', '') }}</textarea></label>
+  {% if not laptop %}<p class="muted small">Save the laptop to assign repair parts and attach documents.</p>{% endif %}
+  <div class="actions"><button class="primary" type="submit">{{ 'Save changes' if laptop else 'Add laptop' }}</button><a class="button subtle" href="{{ url('/laptops/' ~ laptop.id) if laptop else url('/laptops') }}">Cancel</a>{% if error and laptop %}<a href="{{ url('/laptops/' ~ laptop.id ~ '/edit') }}">Reload current record</a>{% endif %}</div>
+</form>
+{% endblock %}

@@ -4,7 +4,7 @@ A web-based application for tracking broken laptops purchased on eBay, their jou
 
 All purchases and sales are entered manually. The initial currency is **Ukrainian hryvnia (UAH)**.
 
-> **Implementation status:** This README is the implementation specification. Application code and verification are being added next; the commands below describe the intended finished project.
+**Version 1.0.0:** The application and Home Assistant add-on package are implemented. See [Run locally](#run-locally) to try it, or [Install in Home Assistant](#install-in-home-assistant) for deployment.
 
 ## Contents
 
@@ -92,6 +92,7 @@ Stock can be edited to record new purchases or correct an inventory count. The q
 - Increasing an assignment deducts the additional quantity; decreasing it returns the difference.
 - Removing an assignment returns its entire quantity to stock.
 - Changes are made within a database transaction to prevent overselling during simultaneous requests.
+- Editing a stale inventory form is rejected if its stock or details changed after the form was opened. Reload the record before saving again.
 - Each new assignment records the part's current unit price and title. Later edits to the inventory item do not change that assignment's recorded cost or name.
 - Updating an existing assignment's quantity preserves its recorded unit price. To use a new price, add a separate assignment.
 - The same inventory item may appear in more than one assignment on a laptop, allowing different recorded prices.
@@ -142,6 +143,7 @@ Upload one or more files from a laptop's detail page. Each attachment shows its 
 - Files are stored with generated identifiers; user-provided names are not used as storage paths.
 - Downloads are served as attachments rather than executing uploaded content in the browser.
 - Maximum file size: **20 MiB per file**.
+- Upload up to **10 files at once**. If any file exceeds the limit, the entire upload is rejected without saving a partial batch.
 - Original filenames are preserved for display and downloads.
 - Files and their metadata persist across application restarts and add-on updates.
 
@@ -276,18 +278,20 @@ Backing up only the database does not back up attachments. CSV exports and autom
 
 Server-rendered forms keep this first release lightweight without requiring a frontend build tool or external JavaScript framework.
 
-Planned project layout:
+Project layout:
 
 ```text
 .
 ├── README.md
 ├── requirements-dev.txt
 ├── pytest.ini
+├── ruff.toml
 ├── tests/
 └── laptop_repair/
     ├── config.yaml
     ├── Dockerfile
     ├── requirements.txt
+    ├── requirements.in
     ├── DOCS.md
     └── app/
         ├── __init__.py
@@ -314,6 +318,7 @@ Install development dependencies and run tests from the project root:
 ```sh
 .venv/bin/python -m pip install -r requirements-dev.txt
 .venv/bin/python -m pytest
+.venv/bin/ruff check laptop_repair/app tests
 ```
 
 Tests use isolated temporary data directories. The verification suite covers:
@@ -328,6 +333,23 @@ Tests use isolated temporary data directories. The verification suite covers:
 - Ingress-prefixed URLs and redirects.
 - CSRF protection and validation errors.
 - Dashboard revenue/profit rules.
+
+Runtime dependencies, including transitive dependencies, are pinned in `laptop_repair/requirements.txt`; direct dependency ranges live in `requirements.in`. To refresh the lock using [uv](https://docs.astral.sh/uv/), run:
+
+```sh
+uv pip compile laptop_repair/requirements.in --python-version 3.11 \
+  --output-file laptop_repair/requirements.txt
+```
+
+Run the tests after updating dependencies. The Docker image uses Python 3.13. Run one application process against each data directory; the provided Uvicorn command uses one worker.
+
+### Initial release verification
+
+- **42 automated tests passed** on Python 3.13, covering the workflows above.
+- A real Chromium walkthrough verified creating a part and laptop, assigning stock, uploading a file, recording a sale, and displaying the calculated profit.
+- Desktop and mobile layouts were checked at 1440 px and 390 px viewport widths.
+- Python lint checks passed.
+- Docker image builds and installation on a live Home Assistant host still need deployment verification; a Docker daemon was unavailable in the implementation environment.
 
 ## Troubleshooting
 

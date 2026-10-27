@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import csrf %}
+{% block title %}{{ 'Edit' if part else 'Add' }} part · Laptop Repair{% endblock %}
+{% block content %}
+<a class="back-link" href="{{ url('/parts') }}">← Parts inventory</a>
+<div class="page-heading"><div><h1>{{ 'Edit part' if part else 'Add part' }}</h1><p class="muted">Keep available stock and current unit prices up to date.</p></div></div>
+{% if part and part.archived %}<div class="warning">This part is archived. Restore it from the archived inventory list before assigning more units.</div>{% endif %}
+<form class="panel form-panel" method="post" action="{{ url('/parts/' ~ part.id ~ '/edit') if part else url('/parts/new') }}">
+  {{ csrf(csrf_token) }}{% if part %}<input type="hidden" name="version" value="{{ values.get('version', part.version) }}">{% endif %}
+  <label>Title<input name="title" value="{{ values.get('title', '') }}" required maxlength="200" placeholder="8 GB DDR4 SODIMM"></label>
+  <div class="form-grid"><label>Unit price (UAH)<input type="number" name="unit_price" min="0" max="999999999.99" step="0.01" value="{{ values.get('unit_price', '') }}" required><small>Existing assignments keep their recorded price.</small></label><label>Available stock quantity<input type="number" name="stock" min="0" max="1000000" step="1" value="{{ values.get('stock', '') }}" required><small>Do not include units already assigned to laptops.</small></label></div>
+  <label>Comment <span class="muted">(optional)</span><textarea name="comment" rows="5" maxlength="10000" placeholder="Compatibility, supplier, or condition…">{{ values.get('comment', '') }}</textarea></label>
+  <div class="actions"><button class="primary" type="submit">{{ 'Save changes' if part else 'Add part' }}</button><a class="button subtle" href="{{ url('/parts') }}">Cancel</a>{% if error and part %}<a href="{{ url('/parts/' ~ part.id ~ '/edit') }}">Reload current record</a>{% endif %}</div>
+</form>
+{% endblock %}

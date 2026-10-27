@@ -1,0 +1,21 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import laptop_table, profit %}
+{% block title %}Overview · Laptop Repair{% endblock %}
+{% block content %}
+<div class="page-heading"><div><p class="eyebrow">YOUR REPAIR WORKSPACE</p><h1>Overview</h1><p class="muted">From a broken laptop to its next owner.</p></div><a class="button primary" href="{{ url('/laptops/new') }}">+ Add laptop</a></div>
+{% if summary.missing_sales %}<div class="warning" role="status">{{ summary.missing_sales }} sold laptop(s) have no resale price. <a href="{{ url('/laptops?status=sold') }}">Review sold laptops</a> to complete revenue and profit totals.</div>{% endif %}
+<section class="metrics" aria-label="Financial summary">
+  <article class="metric"><span>Total laptops</span><strong>{{ summary.count }}</strong><small>Across all statuses</small></article>
+  <article class="metric"><span>Unsold laptop investment</span><strong>{{ summary.investment|money }}</strong><small>Purchase + shipping + assigned parts</small></article>
+  <article class="metric"><span>Available stock value</span><strong>{{ summary.stock_value|money }}</strong><small>Unassigned parts, including archived stock</small></article>
+  <article class="metric"><span>Recorded laptop costs</span><strong>{{ summary.total_cost|money }}</strong><small>All laptops, including sold</small></article>
+  <article class="metric"><span>Sales revenue</span><strong>{{ summary.revenue|money }}</strong><small>Sold laptops with a resale price</small></article>
+  <article class="metric accent"><span>Realized profit</span><strong>{{ profit(summary.profit) }}</strong><small>Sold laptops with a resale price</small></article>
+</section>
+<section class="panel"><div class="section-heading"><h2>Repair pipeline</h2><span class="muted small">Statuses are changed manually</span></div><div class="pipeline">
+{% for value, label in statuses.items() %}<a href="{{ url('/laptops?status=' ~ value) }}"><span>{{ label }}</span><strong>{{ summary.status_counts[value] }}</strong></a>{% endfor %}
+</div></section>
+<section class="panel"><div class="section-heading"><h2>Recently added</h2><a href="{{ url('/laptops') }}">View all laptops →</a></div>
+{% if summary.recent %}{{ laptop_table(summary.recent, url, statuses) }}{% else %}<div class="empty"><h3>Your first repair starts here</h3><p>Add a purchased laptop to track its costs, parts, and resale.</p><a class="button primary" href="{{ url('/laptops/new') }}">Add your first laptop</a></div>{% endif %}
+</section>
+{% endblock %}

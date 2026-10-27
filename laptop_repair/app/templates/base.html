@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>{% block title %}Laptop Repair Manager{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url('/static/style.css') }}">
+  <script src="{{ url('/static/app.js') }}" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="{{ url('/') }}"><span class="brand-icon" aria-hidden="true">↗</span><span>Laptop Repair<span class="brand-sub">PURCHASE · REPAIR · RESELL</span></span></a>
+    <nav aria-label="Main navigation">
+      <a href="{{ url('/') }}" {% if nav == 'dashboard' %}aria-current="page"{% endif %}>Overview</a>
+      <a href="{{ url('/laptops') }}" {% if nav == 'laptops' %}aria-current="page"{% endif %}>Laptops</a>
+      <a href="{{ url('/parts') }}" {% if nav == 'parts' %}aria-current="page"{% endif %}>Parts inventory</a>
+    </nav>
+    <span class="currency-label">UAH ₴</span>
+  </header>
+  <main id="main" class="container">
+    {% if notice %}<div class="notice" role="status">{{ notice }}</div>{% endif %}
+    {% if error %}<div class="error" role="alert">{{ error }}</div>{% endif %}
+    {% block content %}{% endblock %}
+  </main>
+  <footer class="container footer">Laptop Repair Manager <span>All amounts in UAH · v1.0.0</span></footer>
+</body>
+</html>

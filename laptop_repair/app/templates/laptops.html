@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import laptop_table %}
+{% block title %}Laptops · Laptop Repair{% endblock %}
+{% block content %}
+<div class="page-heading"><div><p class="eyebrow">PURCHASES & REPAIRS</p><h1>Laptops</h1><p class="muted">Track every stage, every part, and every sale.</p></div><a class="button primary" href="{{ url('/laptops/new') }}">+ Add laptop</a></div>
+<form class="filters" action="{{ url('/laptops') }}" method="get">
+  <label class="grow">Search title<input type="search" name="q" value="{{ q }}" placeholder="Search laptops…"></label>
+  <label>Status<select name="status"><option value="">All statuses</option>{% for value, label in statuses.items() %}<option value="{{ value }}" {% if status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+  <button type="submit">Filter</button><a class="button subtle" href="{{ url('/laptops') }}">Reset</a>
+</form>
+<section class="panel"><div class="section-heading"><h2>{{ laptops|length }} laptop{{ '' if laptops|length == 1 else 's' }}</h2><span class="muted small">All amounts in UAH</span></div>
+{% if laptops %}{{ laptop_table(laptops, url, statuses) }}{% else %}<div class="empty"><h3>No laptops found</h3><p>{% if q or status %}Try another search or clear your filters.{% else %}Add a laptop after purchasing it to start tracking its repair.{% endif %}</p></div>{% endif %}</section>
+{% endblock %}
